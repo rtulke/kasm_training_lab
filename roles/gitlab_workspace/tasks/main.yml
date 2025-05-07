@@ -1,0 +1,60 @@
+---
+- name: Admin-Benutzername und Passwort verwenden
+  set_fact:
+    admin_user: "admin@kasm.local"
+    admin_password: "{{ kasm_admin_password }}"
+
+- name: Token von KASM API bekommen
+  uri:
+    url: "{{ kasm_api_url }}/auth/login"
+    method: POST
+    validate_certs: no
+    body_format: json
+    body:
+      username: "{{ admin_user }}"
+      password: "{{ admin_password }}"
+  register: token_result
+  failed_when: false
+  retries: 5
+  delay: 10
+  until: token_result.status == 200 or token_result.json is defined
+
+- name: Prüfen, ob Token erfolgreich abgerufen wurde
+  fail:
+    msg: "Konnte kein Token von der KASM API erhalten"
+  when: token_result.failed or token_result.json is not defined or token_result.json.token is not defined
+
+- name: Token extrahieren
+  set_fact:
+    kasm_token: "{{ token_result.json.token }}"
+
+- name: GitLab Workspace-Image in KASM aktivieren
+  uri:
+    url: "{{ kasm_api_url }}/images"
+    method: POST
+    validate_certs: no
+    headers:
+      Authorization: "Bearer {{ kasm_token }}"
+    body_format: json
+    body:
+      image_src: "docker.io/kasmweb/gitlab:latest"
+      friendly_name: "GitLab"
+      description: "GitLab Workspace für den Ansible-Kurs"
+      image_type: "container"
+      enabled: true
+      cpu_limit: 4
+      memory_limit: 8192
+      gpu_count: 0
+      docker_registry: "https://index.docker.io/v1/"
+      category: "Collaboration"
+  register: gitlab_image_result
+  failed_when: false
+
+- name: GitLab Workspace-Status anzeigen
+  debug:
+    msg: >
+      {% if gitlab_image_result.status is defined and (gitlab_image_result.status == 200 or gitlab_image_result.status == 201) %}
+      GitLab Workspace erfolgreich aktiviert
+      {% else %}
+      Konnte GitLab Workspace nicht aktivieren: {{ gitlab_image_result.msg | default('Unbekannter Fehler') }}
+      {% endif %}

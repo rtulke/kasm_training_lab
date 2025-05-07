@@ -1,0 +1,209 @@
+---
+- name: Prüfen, ob das System Debian ist
+  fail:
+    msg: "Dieses Playbook ist nur für Debian-Systeme konzipiert"
+  when: ansible_distribution != "Debian"
+
+- name: Prüfen, ob der Benutzer Root-Rechte hat
+  fail:
+    msg: "Dieses Playbook muss mit Root-Rechten ausgeführt werden"
+  when: ansible_user_id != "root" and not ansible_become
+
+- name: Aktuelle Linux-Version ausgeben
+  debug:
+    msg: "Debian-Version: {{ ansible_distribution_release }} ({{ ansible_distribution_version }})"
+
+- name: Erstelle Backup der originalen sources.list
+  copy:
+    src: /etc/apt/sources.list
+    dest: /etc/apt/sources.list.backup
+    remote_src: yes
+    force: no  # Überschreibt ein bestehendes Backup nicht
+
+- name: Konfiguriere APT sources.list
+  template:
+    src: sources.list.j2
+    dest: /etc/apt/sources.list
+    owner: root
+    group: root
+    mode: '0644'
+  register: sources_list_updated
+
+- name: APT Cache aktualisieren nach sources.list Änderung
+  apt:
+    update_cache: yes
+  when: sources_list_updated.changed
+
+- name: System-Upgrade durchführen
+  apt:
+    upgrade: dist
+    autoremove: yes
+    autoclean: yes
+
+- name: Essentielle Pakete installieren
+  apt:
+    name:
+      - sudo
+      - vim
+      - htop
+      - tmux
+      - git
+      - curl
+      - wget
+      - gnupg2
+      - apt-transport-https
+      - ca-certificates
+      - lsb-release
+      - net-tools
+      - unzip
+      - python3-pip
+      - locales
+      - tree
+    state: present
+
+- name: Lokalisierungsoptionen konfigurieren
+  locale_gen:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - en_US.UTF-8
+    - de_CH.UTF-8
+
+- name: Zeitzone setzen
+  timezone:
+    name: Europe/Zurich
+
+- name: Firewall (UFW) installieren
+  apt:
+    name: ufw
+    state: present
+
+- name: Firewall-Regeln für KASM einrichten
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - 22   # SSH
+    - 80   # HTTP
+    - 443  # HTTPS
+    - 3389 # RDP
+    - 8443 # KASM Admin Panel
+
+- name: Firewall aktivieren
+  ufw:
+    state: enabled
+    policy: deny
+
+- name: Swap-Datei erstellen für bessere Performance
+  block:
+    - name: Swap-Datei anlegen
+      command: dd if=/dev/zero of=/swapfile bs=1M count=8192
+      args:
+        creates: /swapfile
+
+    - name: Berechtigungen für Swap-Datei setzen
+      file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Swap-Datei formatieren
+      command: mkswap /swapfile
+      args:
+        creates: /proc/swaps
+      register: mkswap_result
+      failed_when: false
+
+    - name: Prüfen, ob Swap bereits eingebunden ist
+      shell: swapon -s | grep -q /swapfile
+      register: swap_active
+      failed_when: false
+      changed_when: false
+
+    - name: Swap-Datei aktivieren
+      command: swapon /swapfile
+      when: 
+        - mkswap_result.rc == 0
+        - swap_active.rc != 0
+
+    - name: Swap-Datei in fstab eintragen
+      lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        state: present
+  when: ansible_memory_mb.real.total < 32768  # Nur wenn weniger als 32GB RAM vorhanden sind
+
+- name: Systemparameter für KASM optimieren
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { key: "vm.max_map_count", value: "262144" }
+    - { key: "fs.file-max", value: "100000" }
+    - { key: "kernel.pid_max", value: "32768" }
+
+- name: Prüfen, ob Docker installiert ist
+  command: dpkg-query -W docker-ce
+  register: docker_check
+  failed_when: false
+  changed_when: false
+
+- name: Docker installieren, falls noch nicht vorhanden
+  block:
+    - name: Benötigte Pakete für Docker-Installation installieren
+      apt:
+        name:
+          - gnupg
+          - lsb-release
+          - ca-certificates
+          - curl
+        state: present
+
+    - name: Docker Verzeichnis für APT erstellen
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Docker GPG-Schlüssel herunterladen
+      shell: curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+        
+    - name: Berechtigungen für Docker GPG-Schlüssel setzen
+      file:
+        path: /etc/apt/keyrings/docker.gpg
+        mode: '0644'
+
+    - name: Docker-Repository hinzufügen
+      shell: |
+        echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+        $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+      args:
+        creates: /etc/apt/sources.list.d/docker.list
+
+    - name: APT-Cache aktualisieren
+      apt:
+        update_cache: yes
+
+    - name: Docker installieren
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Docker-Service aktivieren und starten
+      service:
+        name: docker
+        state: started
+        enabled: yes
+  when: docker_check.rc != 0

@@ -1,0 +1,20 @@
+---
+# Kasm Variablen
+kasm_version: "1.17.0.7f020d"
+log_dir: "/var/log/ansible_kasm"
+kasm_admin_password: "KasmSecureAdmin2023"  # Neues Adminpasswort
+kasm_user_password: "KasmUserPass2023"      # Neues Benutzerpasswort
+kasm_db_password: "KasmDbPass2023"          # Neues Datenbankpasswort
+
+# Benutzer-Konfiguration
+user_prefix: "cote"
+user_count: 10
+default_password: "KasmInitial2023!"  # In Produktion durch vault ersetzen!
+
+# SSH-Konfiguration
+remote_server: "192.168.1.100"
+remote_user: "student"
+remote_pass: "SecurePassword"  # In Produktion durch vault ersetzen!
+
+# KASM API-Konfiguration
+kasm_api_url: "https://localhost:8443/api/public"

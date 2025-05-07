@@ -1,0 +1,105 @@
+---
+- name: Erstelle Log-Verzeichnis
+  file:
+    path: "{{ log_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: System aktualisieren
+  apt:
+    update_cache: yes
+    upgrade: yes
+
+- name: Benötigte Pakete installieren
+  apt:
+    name: 
+      - curl
+      - wget
+      - gnupg2
+      - ca-certificates
+      - lsb-release
+      - apt-transport-https
+    state: present
+
+- name: Temporäres Verzeichnis erstellen
+  file:
+    path: /tmp/kasm_install
+    state: directory
+    mode: '0755'
+
+- name: KASM Workspace herunterladen
+  get_url:
+    url: "https://kasm-static-content.s3.amazonaws.com/kasm_release_{{ kasm_version }}.tar.gz"
+    dest: /tmp/kasm_install/kasm_release.tar.gz
+    mode: '0644'
+
+- name: KASM Workspace entpacken
+  unarchive:
+    src: /tmp/kasm_install/kasm_release.tar.gz
+    dest: /tmp/kasm_install
+    remote_src: yes
+
+- name: KASM Workspace installieren (non-interaktiv)
+  shell: 
+    cmd: >
+      ./install.sh
+      --accept-eula
+      --proxy-port 8443
+      --admin-password "{{ kasm_admin_password }}"
+      --user-password "{{ kasm_user_password }}"
+      --db-password "{{ kasm_db_password }}"
+      --default-images
+    chdir: /tmp/kasm_install/kasm_release
+  args:
+    creates: /opt/kasm/current
+  register: kasm_install_result
+
+- name: Installationslog prüfen (bei Fehlern)
+  command: ls -la /tmp/kasm_install/kasm_release/kasm_install_*.log
+  register: log_files
+  changed_when: false
+  failed_when: false
+  when: kasm_install_result is failed
+
+- name: Installationslog anzeigen (bei Fehlern)
+  command: cat "{{ log_files.stdout_lines[-1] }}"
+  register: log_content
+  changed_when: false
+  failed_when: false
+  when: kasm_install_result is failed and log_files.stdout_lines is defined and log_files.stdout_lines | length > 0
+
+- name: Inhalt des Installationslogs anzeigen (bei Fehlern)
+  debug:
+    msg: "{{ log_content.stdout_lines }}"
+  when: log_content is defined and log_content.stdout_lines is defined
+
+- name: Symlinks für KASM prüfen
+  stat:
+    path: /opt/kasm/current
+  register: kasm_symlink
+
+- name: Symlinks für KASM erstellen (falls nötig)
+  shell: |
+    rm -f /opt/kasm/current
+    rm -f /opt/kasm/bin
+    ln -sf {{ kasm_install_base | default('/opt/kasm/' ~ kasm_version) }} /opt/kasm/current
+    ln -sf /opt/kasm/current/bin /opt/kasm/bin
+  when: not kasm_symlink.stat.exists or not kasm_symlink.stat.islnk
+
+- name: KASM-Dienste starten
+  command: /opt/kasm/bin/start
+  when: kasm_install_result.changed
+
+- name: KASM Zugangsdaten anzeigen
+  debug:
+    msg: |
+      KASM Installation abgeschlossen.
+      
+      Kasm UI Zugangsdaten:
+      ------------------
+      Admin: admin@kasm.local / {{ kasm_admin_password }}
+      User: user@kasm.local / {{ kasm_user_password }}
+      
+      Datenbank: {{ kasm_db_password }}
+      
+      Web-UI ist unter https://{{ ansible_host }}:8443 erreichbar

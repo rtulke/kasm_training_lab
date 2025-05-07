@@ -1,0 +1,50 @@
+---
+- name: Benötigte Pakete installieren
+  apt:
+    name:
+      - sshpass
+      - openssh-client
+    state: present
+
+- name: Benutzer erstellen und SSH einrichten
+  block:
+    - name: Benutzer erstellen (falls noch nicht vorhanden)
+      user:
+        name: "{{ user_prefix }}{{ '%02d' | format(item) }}"
+        shell: /bin/bash
+        createhome: yes
+      loop: "{{ range(1, user_count + 1) | list }}"
+
+    - name: SSH-Verzeichnis erstellen
+      file:
+        path: "/home/{{ user_prefix }}{{ '%02d' | format(item) }}/.ssh"
+        state: directory
+        owner: "{{ user_prefix }}{{ '%02d' | format(item) }}"
+        group: "{{ user_prefix }}{{ '%02d' | format(item) }}"
+        mode: '0700'
+      loop: "{{ range(1, user_count + 1) | list }}"
+
+    - name: SSH-Key generieren
+      shell: >
+        sudo -u {{ user_prefix }}{{ '%02d' | format(item) }} 
+        ssh-keygen -t ed25519 -f /home/{{ user_prefix }}{{ '%02d' | format(item) }}/.ssh/id_ed25519 -N ''
+      args:
+        creates: "/home/{{ user_prefix }}{{ '%02d' | format(item) }}/.ssh/id_ed25519"
+      loop: "{{ range(1, user_count + 1) | list }}"
+
+    - name: SSH-Key auf Remote-Server kopieren
+      shell: >
+        sudo -u {{ user_prefix }}{{ '%02d' | format(item) }} 
+        sshpass -p "{{ remote_pass }}" 
+        ssh-copy-id -o StrictHostKeyChecking=no {{ remote_user }}@{{ remote_server }}
+      loop: "{{ range(1, user_count + 1) | list }}"
+      ignore_errors: yes  # Falls Remote-Server nicht erreichbar ist
+
+    - name: SSH-Config erstellen
+      template:
+        src: ssh_config.j2
+        dest: "/home/{{ user_prefix }}{{ '%02d' | format(item) }}/.ssh/config"
+        owner: "{{ user_prefix }}{{ '%02d' | format(item) }}"
+        group: "{{ user_prefix }}{{ '%02d' | format(item) }}"
+        mode: '0600'
+      loop: "{{ range(1, user_count + 1) | list }}"

@@ -1,0 +1,14 @@
+---
+- name: KASM mit GitLab und Ansible Workspaces Installation
+  hosts: localhost
+  become: true
+  vars_files:
+    - vars/main.yml
+  
+  roles:
+    - role: debian_prepare
+    - role: kasm_install
+    - role: gitlab_workspace
+    - role: ansible_workspace
+    - role: kasm_users
+    - role: ssh_setup

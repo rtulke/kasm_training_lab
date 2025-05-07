@@ -1,0 +1,9 @@
+---
+- name: KASM Workspaces zurücksetzen
+  hosts: localhost
+  become: true
+  vars_files:
+    - vars/main.yml
+  
+  roles:
+    - role: kasm_reset

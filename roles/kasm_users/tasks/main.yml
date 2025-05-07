@@ -1,0 +1,54 @@
+---
+- name: Admin-Benutzername und Passwort festlegen (falls nicht vorhanden)
+  set_fact:
+    admin_user: "admin@kasm.local"
+    admin_password: "{{ kasm_admin_password }}"
+  when: admin_user is not defined or admin_password is not defined
+
+- name: Token von KASM API bekommen
+  uri:
+    url: "{{ kasm_api_url }}/auth/login"
+    method: POST
+    validate_certs: no
+    body_format: json
+    body:
+      username: "{{ admin_user }}"
+      password: "{{ admin_password }}"
+  register: token_result
+  failed_when: false
+  retries: 5
+  delay: 10
+  until: token_result.status == 200 or token_result.json is defined
+
+- name: Token extrahieren
+  set_fact:
+    kasm_token: "{{ token_result.json.token }}"
+  when: token_result.json is defined and token_result.json.token is defined
+
+- name: Benutzer in KASM erstellen
+  uri:
+    url: "{{ kasm_api_url }}/users"
+    method: POST
+    validate_certs: no
+    headers:
+      Authorization: "Bearer {{ kasm_token }}"
+    body_format: json
+    body:
+      username: "{{ user_prefix }}{{ '%02d' | format(item) }}"
+      password: "{{ default_password }}"
+      first_name: "Course"
+      last_name: "User{{ '%02d' | format(item) }}"
+      locked: false
+      disabled: false
+      access_level: "standard"
+      image_mapping_method: "default"
+    status_code: [200, 201, 409]  # 409 = Benutzer existiert bereits
+  loop: "{{ range(1, user_count + 1) | list }}"
+  register: users_result
+  when: kasm_token is defined
+
+- name: Benutzererstellung-Status anzeigen
+  debug:
+    msg: "Benutzer {{ user_prefix }}{{ '%02d' | format(item.item) }} erstellt oder existiert bereits"
+  loop: "{{ users_result.results }}"
+  when: users_result is defined and users_result.results is defined

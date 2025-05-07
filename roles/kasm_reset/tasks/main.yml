@@ -1,0 +1,38 @@
+---
+- name: Token von KASM API bekommen (falls noch nicht vorhanden)
+  uri:
+    url: "{{ kasm_api_url }}/auth/login"
+    method: POST
+    validate_certs: no
+    body_format: json
+    body:
+      username: "{{ admin_user }}"
+      password: "{{ admin_password }}"
+  register: token_result
+  when: kasm_token is not defined
+
+- name: Token extrahieren (falls noch nicht vorhanden)
+  set_fact:
+    kasm_token: "{{ token_result.json.token }}"
+  when: kasm_token is not defined
+
+- name: Alle Benutzer abrufen
+  uri:
+    url: "{{ kasm_api_url }}/users"
+    method: GET
+    validate_certs: no
+    headers:
+      Authorization: "Bearer {{ kasm_token }}"
+  register: users_list
+
+- name: Benutzer-IDs extrahieren
+  set_fact:
+    user_ids: "{{ users_list.json | json_query(query) }}"
+  vars:
+    query: "[?starts_with(username, '{{ user_prefix }}')].user_id"
+
+- name: Sessions für jeden Benutzer abrufen und beenden
+  include_tasks: reset_user_sessions.yml
+  loop: "{{ user_ids }}"
+  loop_control:
+    loop_var: user_id

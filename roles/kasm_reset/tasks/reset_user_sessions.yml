@@ -1,0 +1,23 @@
+---
+- name: Sessions für Benutzer abrufen
+  uri:
+    url: "{{ kasm_api_url }}/sessions/user/{{ user_id }}"
+    method: GET
+    validate_certs: no
+    headers:
+      Authorization: "Bearer {{ kasm_token }}"
+  register: user_sessions
+
+- name: Extrahiere Session-IDs
+  set_fact:
+    session_ids: "{{ user_sessions.json | json_query('[*].kasm_id') }}"
+  when: user_sessions.json is defined
+
+- name: Sessions beenden
+  uri:
+    url: "{{ kasm_api_url }}/sessions/{{ item }}"
+    method: DELETE
+    validate_certs: no
+    headers:
+      Authorization: "Bearer {{ kasm_token }}"
+  loop: "{{ session_ids | default([]) }}"
