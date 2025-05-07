@@ -3,5 +3,5 @@
 ## Install
 
 ```
-curl -sSL https://raw.githubusercontent.com/rtulke/kasm_training_lab/main/installer.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/rtulke/kasm_training_lab/refs/heads/main/install.sh | sudo bash
 ```
