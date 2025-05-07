@@ -60,16 +60,18 @@ EOF
 # Function to install packages
 install_packages() {
     log_message "Updating package lists"
-    apt update -y || {
+    apt update -y
+    if [ $? -ne 0 ]; then
         log_message "Failed to update package lists" "err"
         exit 1
-    }
+    fi
     
     log_message "Installing required packages: $REQUIRED_PKGS"
-    apt install -y $REQUIRED_PKGS || {
+    apt install -y $REQUIRED_PKGS
+    if [ $? -ne 0 ]; then
         log_message "Failed to install packages" "err"
         exit 1
-    }
+    fi
     
     # Check if installation was successful
     for PKG in $REQUIRED_PKGS; do
@@ -93,10 +95,11 @@ clone_repository() {
     fi
     
     # Clone the repository
-    git clone "$REPO_URL" "$REPO_DIR" || {
+    git clone "$REPO_URL" "$REPO_DIR"
+    if [ $? -ne 0 ]; then
         log_message "Failed to clone repository" "err"
         exit 1
-    }
+    fi
     
     log_message "Repository cloned successfully to $REPO_DIR"
 }
@@ -106,22 +109,24 @@ run_ansible_playbook() {
     log_message "Running Ansible playbook: $PLAYBOOK"
     
     # Change to repository directory
-    cd "$REPO_DIR" || {
+    cd "$REPO_DIR"
+    if [ $? -ne 0 ]; then
         log_message "Failed to change to repository directory" "err"
         exit 1
-    }
+    fi
     
     # Check if playbook exists
     if [ ! -f "$PLAYBOOK" ]; then
         log_message "Playbook $PLAYBOOK not found in repository" "err"
         exit 1
-    }
+    fi
     
     # Run the playbook
-    ansible-playbook "$PLAYBOOK" || {
+    ansible-playbook "$PLAYBOOK"
+    if [ $? -ne 0 ]; then
         log_message "Failed to run Ansible playbook" "err"
         exit 1
-    }
+    fi
     
     log_message "Ansible playbook executed successfully"
 }
