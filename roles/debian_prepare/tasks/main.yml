@@ -109,13 +109,19 @@
         group: root
         mode: '0600'
 
+   
     - name: Swap-Datei formatieren
       command: mkswap /swapfile
-      args:
-        creates: /proc/swaps
+      become: yes
       register: mkswap_result
-      failed_when: false
-
+      failed_when: mkswap_result.rc != 0 and "found swap signature" not in mkswap_result.stderr
+    
+    - name: Swap-Datei aktivieren
+      command: swapon /swapfile
+      become: yes
+      register: swapon_result
+      failed_when: swapon_result.rc != 0 and "already" not in swapon_result.stderr
+ 
     - name: Prüfen, ob Swap bereits eingebunden ist
       shell: swapon -s | grep -q /swapfile
       register: swap_active
