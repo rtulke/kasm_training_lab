@@ -4,7 +4,7 @@
 # Global variables
 SOURCES_LIST="/etc/apt/sources.list"
 REQUIRED_PKGS="tree ansible git"
-TAG="kasm_training_lab_install"
+TAG="installer"
 REPO_URL="https://github.com/rtulke/kasm_training_lab.git"
 REPO_DIR="/tmp/kasm_training_lab"
 PLAYBOOK="main_install.yaml"
