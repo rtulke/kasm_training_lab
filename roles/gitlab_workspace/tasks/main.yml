@@ -1,51 +1,57 @@
-# roles/gitlab_workspace/tasks/main.yml
 ---
 - name: Admin-Benutzername und Passwort festlegen
   set_fact:
     admin_user: "admin@kasm.local"
     admin_password: "{{ kasm_admin_password }}"
-
-- name: API-Fehler umgehen - Direktes Handling aktivieren
-  set_fact:
     skip_api: true
 
-# Versuche trotzdem das Token zu bekommen (für zukünftige Verwendung)
-- name: Token von KASM API versuchen (kann fehlschlagen)
-  uri:
-    url: "{{ kasm_api_url }}/auth/login"
-    method: POST
-    validate_certs: no
-    body_format: json
-    body:
-      username: "{{ admin_user }}"
-      password: "{{ admin_password }}"
-  register: token_result
-  failed_when: false
-  ignore_errors: yes
+- name: KASM Docker-Netzwerk ermitteln
+  shell: docker network ls | grep kasm | awk '{print $2}' | head -1
+  register: kasm_networks
+  changed_when: false
 
-# Direktes Docker-Handling
+- name: KASM-Netzwerk festlegen
+  set_fact:
+    kasm_network: "{{ kasm_networks.stdout | default('bridge') }}"
+
 - name: GitLab Workspace-Container prüfen
-  command: docker ps -a --filter "name=kasm_custom_gitlab" --format {% raw %}'{{.Names}}'{% endraw %}
+  shell: docker ps -a --filter "name=kasm_custom_gitlab" -q
   register: docker_check
   changed_when: false
-  when: skip_api | bool
 
+- name: Verfügbare KASM-Images auflisten
+  shell: docker images | grep kasmweb
+  register: kasm_images
+  changed_when: false
+
+- name: KASM-Images anzeigen
+  debug:
+    var: kasm_images.stdout_lines
+
+# Verwende ein vorhandenes Image für GitLab oder ein ähnliches
 - name: GitLab Workspace-Container starten
-  command: >
+  shell: >
     docker run -d
     --name kasm_custom_gitlab
-    --network kasm_default
+    --network {{ kasm_network }}
     --label "kasm.workspace=true"
     --label "kasm.workspace.name=GitLab"
     -e VNC_PW={{ kasm_user_password }}
     -e KASM_USER=kasm-user
-    kasmweb/gitlab:latest
+    kasmweb/ubuntu-jammy-desktop:latest
   when: 
-    - skip_api | bool
-    - docker_check.stdout != "kasm_custom_gitlab"
+    - docker_check.stdout == ""
+  ignore_errors: yes
+  register: gitlab_container_result
+
+- name: GitLab-Tools in Container installieren
+  shell: >
+    docker exec kasm_custom_gitlab bash -c "apt-get update &&
+    apt-get install -y git curl ca-certificates gnupg &&
+    curl -fsSL https://gitlab.com/gitlab-org/gitlab-ee/raw/master/scripts/gitlab-install.sh | bash"
+  when: gitlab_container_result is not failed and gitlab_container_result.changed
   ignore_errors: yes
 
 - name: Status-Info anzeigen
   debug:
-    msg: "GitLab Workspace wurde direkt durch Docker-Befehle eingerichtet. Auf die KASM-Oberfläche zugreifen für URL-Registrierung."
-  when: skip_api | bool
+    msg: "GitLab Workspace wurde als Ubuntu-Container mit GitLab-Tools eingerichtet."
