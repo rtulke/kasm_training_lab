@@ -14,6 +14,10 @@
   set_fact:
     kasm_network: "{{ kasm_networks.stdout | default('bridge') }}"
 
+- name: Ausgabe des verwendeten Netzwerks
+  debug:
+    msg: "Verwende Docker-Netzwerk: {{ kasm_network }}"
+
 - name: Ansible Workspace-Container prüfen
   shell: docker ps -a --filter "name=kasm_custom_ansible" -q
   register: docker_check
@@ -28,20 +32,57 @@
     --label "kasm.workspace.name=Ansible Control Node"
     -e VNC_PW={{ kasm_user_password }}
     -e KASM_USER=kasm-user
-    kasmweb/ubuntu-jammy-desktop:latest
+    kasmweb/vs-code:1.17.0
   when: docker_check.stdout == ""
   ignore_errors: yes
   register: ansible_container_result
 
+- name: Ansible-Container-Status anzeigen
+  debug:
+    var: ansible_container_result
+    verbosity: 1
+
 - name: Ansible in Container installieren
   shell: >
-    docker exec kasm_custom_ansible bash -c "apt-get update && 
+    docker exec kasm_custom_ansible bash -c "
+    apt-get update && 
     apt-get install -y ansible git python3-pip sshpass python3-paramiko &&
+    echo 'Ansible und erforderliche Pakete installiert' &&
     mkdir -p /home/kasm-user/ansible/{playbooks,inventory,roles} &&
     chown -R kasm-user:kasm-user /home/kasm-user/ansible"
-  when: ansible_container_result is not failed and ansible_container_result.changed
+  when: ansible_container_result is not failed and ansible_container_result.rc is defined and ansible_container_result.rc == 0
+  ignore_errors: yes
+  register: ansible_install_result
+
+- name: Ansible-Installation-Status anzeigen
+  debug:
+    var: ansible_install_result
+    verbosity: 1
+
+- name: Beispiel-Playbook erstellen
+  shell: >
+    docker exec kasm_custom_ansible bash -c "
+    cat > /home/kasm-user/ansible/playbooks/example.yaml << 'EOF'
+    ---
+    - name: Beispiel-Playbook
+      hosts: localhost
+      gather_facts: yes
+      tasks:
+        - name: Systeminformationen anzeigen
+          debug:
+            msg: 'Hostname: {{ ansible_hostname }}, System: {{ ansible_distribution }} {{ ansible_distribution_version }}'
+    EOF
+    && chown kasm-user:kasm-user /home/kasm-user/ansible/playbooks/example.yaml"
+  when: ansible_install_result is not failed and ansible_install_result.rc is defined and ansible_install_result.rc == 0
   ignore_errors: yes
 
 - name: Status-Info anzeigen
   debug:
-    msg: "Ansible Control Node Workspace wurde direkt durch Docker-Befehle eingerichtet."
+    msg: >
+      {% if ansible_container_result is not failed and ansible_container_result.rc is defined and ansible_container_result.rc == 0 %}
+      Ansible Control Node Workspace wurde erfolgreich eingerichtet und ist bereit.
+      Ein Beispiel-Playbook wurde in /home/kasm-user/ansible/playbooks/example.yaml erstellt.
+      {% else %}
+      Ansible Workspace-Einrichtung mit direkten Docker-Befehlen konnte nicht abgeschlossen werden.
+      Bitte prüfen Sie die Docker-Logs und versuchen Sie es manuell.
+      {% endif %}
