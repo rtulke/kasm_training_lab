@@ -17,4 +17,4 @@ remote_user: "student"
 remote_pass: "SecurePassword"  # In Produktion durch vault ersetzen!
 
 # KASM API-Konfiguration
-kasm_api_url: "https://localhost:8443/api/public"
+kasm_api_url: "https://localhost:8443/api"
