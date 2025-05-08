@@ -97,7 +97,18 @@
 
 - name: Swap-Datei erstellen für bessere Performance
   block:
-    - name: Swap-Datei anlegen
+    - name: Prüfen, ob Swap bereits aktiv ist
+      shell: cat /proc/swaps | grep -q "/swapfile"
+      register: swap_active
+      failed_when: false
+      changed_when: false
+
+    - name: Swap-Datei deaktivieren (falls bereits aktiv)
+      command: swapoff /swapfile
+      when: swap_active.rc == 0
+      ignore_errors: yes
+
+    - name: Swap-Datei anlegen (falls nicht vorhanden)
       command: dd if=/dev/zero of=/swapfile bs=1M count=8192
       args:
         creates: /swapfile
@@ -109,38 +120,35 @@
         group: root
         mode: '0600'
 
-   
     - name: Swap-Datei formatieren
       command: mkswap /swapfile
-      become: yes
       register: mkswap_result
-      failed_when: mkswap_result.rc != 0 and "found swap signature" not in mkswap_result.stderr
-    
-    - name: Swap-Datei aktivieren
-      command: swapon /swapfile
-      become: yes
-      register: swapon_result
-      failed_when: swapon_result.rc != 0 and "already" not in swapon_result.stderr
- 
-    - name: Prüfen, ob Swap bereits eingebunden ist
-      shell: swapon -s | grep -q /swapfile
-      register: swap_active
       failed_when: false
-      changed_when: false
+      ignore_errors: yes
 
     - name: Swap-Datei aktivieren
       command: swapon /swapfile
-      when: 
-        - mkswap_result.rc == 0
-        - swap_active.rc != 0
+      when: mkswap_result.rc == 0
+      failed_when: false
+      ignore_errors: yes
+
+    - name: Swap-Status prüfen und anzeigen
+      shell: swapon -s | grep "/swapfile" || echo "Swap nicht aktiv"
+      register: swap_status
+      changed_when: false
+      
+    - name: Swap-Status ausgeben
+      debug:
+        var: swap_status.stdout
 
     - name: Swap-Datei in fstab eintragen
       lineinfile:
         path: /etc/fstab
         line: "/swapfile none swap sw 0 0"
         state: present
+       
   when: ansible_memory_mb.real.total < 32768  # Nur wenn weniger als 32GB RAM vorhanden sind
-
+  
 - name: Systemparameter für KASM optimieren
   sysctl:
     name: "{{ item.key }}"
