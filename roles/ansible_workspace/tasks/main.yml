@@ -70,6 +70,7 @@
     && chown kasm-user:kasm-user /home/kasm-user/ansible/playbooks/example.yaml"
   when: ansible_install_result is not failed and ansible_install_result.rc is defined and ansible_install_result.rc == 0
   ignore_errors: yes
+  
 - name: Status-Info anzeigen
   debug:
     msg: >
