@@ -25,7 +25,7 @@
 
 # Direktes Docker-Handling
 - name: GitLab Workspace-Container prüfen
-  command: docker ps -a --filter "name=kasm_custom_gitlab" --format '{{.Names}}'
+  command: docker ps -a --filter "name=kasm_custom_gitlab" --format {% raw %}'{{.Names}}'{% endraw %}
   register: docker_check
   changed_when: false
   when: skip_api | bool
