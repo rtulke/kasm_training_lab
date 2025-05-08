@@ -1,4 +1,3 @@
-# roles/ansible_workspace/tasks/main.yml
 ---
 - name: Admin-Benutzername und Passwort festlegen
   set_fact:
@@ -6,40 +5,43 @@
     admin_password: "{{ kasm_admin_password }}"
     skip_api: true
 
-# Direktes Docker-Handling
+- name: KASM Docker-Netzwerk ermitteln
+  shell: docker network ls | grep kasm | awk '{print $2}' | head -1
+  register: kasm_networks
+  changed_when: false
+
+- name: KASM-Netzwerk festlegen
+  set_fact:
+    kasm_network: "{{ kasm_networks.stdout | default('bridge') }}"
+
 - name: Ansible Workspace-Container prüfen
-  command: docker ps -a --filter "name=kasm_custom_ansible" --format '{{.Names}}'
+  shell: docker ps -a --filter "name=kasm_custom_ansible" -q
   register: docker_check
   changed_when: false
-  when: skip_api | bool
 
 - name: Ansible Workspace-Container starten
-  command: >
+  shell: >
     docker run -d
     --name kasm_custom_ansible
-    --network kasm_default
+    --network {{ kasm_network }}
     --label "kasm.workspace=true"
     --label "kasm.workspace.name=Ansible Control Node"
     -e VNC_PW={{ kasm_user_password }}
     -e KASM_USER=kasm-user
-    kasmweb/ubuntu-focal-desktop:latest
-  when: 
-    - skip_api | bool
-    - docker_check.stdout != "kasm_custom_ansible"
+    kasmweb/ubuntu-jammy-desktop:latest
+  when: docker_check.stdout == ""
   ignore_errors: yes
+  register: ansible_container_result
 
 - name: Ansible in Container installieren
-  command: >
+  shell: >
     docker exec kasm_custom_ansible bash -c "apt-get update && 
     apt-get install -y ansible git python3-pip sshpass python3-paramiko &&
     mkdir -p /home/kasm-user/ansible/{playbooks,inventory,roles} &&
     chown -R kasm-user:kasm-user /home/kasm-user/ansible"
-  when: 
-    - skip_api | bool
-    - docker_check.stdout != "kasm_custom_ansible"
+  when: ansible_container_result is not failed and ansible_container_result.changed
   ignore_errors: yes
 
 - name: Status-Info anzeigen
   debug:
-    msg: "Ansible Control Node Workspace wurde direkt durch Docker-Befehle eingerichtet. Auf die KASM-Oberfläche zugreifen für URL-Registrierung."
-  when: skip_api | bool
+    msg: "Ansible Control Node Workspace wurde direkt durch Docker-Befehle eingerichtet."
