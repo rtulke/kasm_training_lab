@@ -55,19 +55,17 @@
   register: ansible_install_result
 
 - name: Beispiel-Playbook erstellen
-  shell: >
+  shell: |
     docker exec -u root kasm_custom_ansible bash -c "
-    cat > /home/kasm-user/ansible/playbooks/example.yaml << 'EOF'
-    ---
-    - name: Beispiel-Playbook
-      hosts: localhost
-      gather_facts: yes
-      tasks:
-        - name: Systeminformationen anzeigen
-          debug:
-            msg: 'Hostname: {{ ansible_hostname }}, System: {{ ansible_distribution }} {{ ansible_distribution_version }}'
-    EOF
-    && chown kasm-user:kasm-user /home/kasm-user/ansible/playbooks/example.yaml"
+    echo '---' > /home/kasm-user/ansible/playbooks/example.yaml
+    echo '- name: Beispiel-Playbook' >> /home/kasm-user/ansible/playbooks/example.yaml
+    echo '  hosts: localhost' >> /home/kasm-user/ansible/playbooks/example.yaml
+    echo '  gather_facts: yes' >> /home/kasm-user/ansible/playbooks/example.yaml
+    echo '  tasks:' >> /home/kasm-user/ansible/playbooks/example.yaml
+    echo '    - name: Systeminformationen anzeigen' >> /home/kasm-user/ansible/playbooks/example.yaml
+    echo '      debug:' >> /home/kasm-user/ansible/playbooks/example.yaml
+    echo '        msg: \"Hostname: {{ ansible_hostname }}, System: {{ ansible_distribution }} {{ ansible_distribution_version }}\"' >> /home/kasm-user/ansible/playbooks/example.yaml
+    chown kasm-user:kasm-user /home/kasm-user/ansible/playbooks/example.yaml"
   when: ansible_install_result is not failed and ansible_install_result.rc is defined and ansible_install_result.rc == 0
   ignore_errors: yes
   
