@@ -44,7 +44,7 @@
 
 - name: Ansible in Container installieren
   shell: >
-    docker exec kasm_custom_ansible bash -c "
+    docker exec -u root kasm_custom_ansible bash -c "
     apt-get update && 
     apt-get install -y ansible git python3-pip sshpass python3-paramiko &&
     echo 'Ansible und erforderliche Pakete installiert' &&
@@ -54,14 +54,9 @@
   ignore_errors: yes
   register: ansible_install_result
 
-- name: Ansible-Installation-Status anzeigen
-  debug:
-    var: ansible_install_result
-    verbosity: 1
-
 - name: Beispiel-Playbook erstellen
   shell: >
-    docker exec kasm_custom_ansible bash -c "
+    docker exec -u root kasm_custom_ansible bash -c "
     cat > /home/kasm-user/ansible/playbooks/example.yaml << 'EOF'
     ---
     - name: Beispiel-Playbook
@@ -75,7 +70,6 @@
     && chown kasm-user:kasm-user /home/kasm-user/ansible/playbooks/example.yaml"
   when: ansible_install_result is not failed and ansible_install_result.rc is defined and ansible_install_result.rc == 0
   ignore_errors: yes
-
 - name: Status-Info anzeigen
   debug:
     msg: >
