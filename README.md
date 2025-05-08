@@ -1,4 +1,4 @@
-# kasm_training_lab
+# kasm training lab
 
 ## Install
 
