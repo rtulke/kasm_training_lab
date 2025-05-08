@@ -69,23 +69,41 @@ show_help() {
 
 # Function to display menu and get user choice
 show_menu() {
-    echo -e "Please select an option:"
-    echo
-    echo -e "  ${YELLOW}1)${NC} Download KASM Training Lab Repository from GitHub"
-    echo -e "  ${YELLOW}2)${NC} Install KASM Training Lab (Full Installation)"
-    echo -e "  ${YELLOW}3)${NC} Display Help"
-    echo -e "  ${YELLOW}4)${NC} Cancel"
-    echo
-    echo -n "Your choice [1-4]: "
-    read -r choice
+    local valid_choice=false
+    local choice
     
-    case $choice in
-        1) return 1 ;;  # Download only
-        2) return 2 ;;  # Full install
-        3) show_help; show_menu ;;  # Show help and then show menu again
-        4) echo -e "\nInstallation ${RED}cancelled${NC}."; exit 0 ;;
-        *) echo -e "\n${RED}Invalid selection${NC}. Please choose 1-4."; show_menu ;;
-    esac
+    # Continue until a valid choice is made
+    while [ "$valid_choice" = false ]; do
+        echo -e "Please select an option:"
+        echo
+        echo -e "  ${YELLOW}1)${NC} Download KASM Training Lab Repository from GitHub"
+        echo -e "  ${YELLOW}2)${NC} Install KASM Training Lab (Full Installation)"
+        echo -e "  ${YELLOW}3)${NC} Display Help"
+        echo -e "  ${YELLOW}4)${NC} Cancel"
+        echo
+        echo -n "Your choice [1-4]: "
+        read -r choice
+        
+        case "$choice" in
+            1)
+                valid_choice=true
+                return 1 ;;  # Download only
+            2)
+                valid_choice=true
+                return 2 ;;  # Full install
+            3)
+                # Show help and continue showing menu
+                show_help
+                echo  # Add newline for better readability
+                ;;
+            4)
+                echo -e "\nInstallation ${RED}cancelled${NC}."
+                exit 0 ;;
+            *)
+                echo -e "\n${RED}Invalid selection${NC}. Please choose 1-4.\n"
+                ;;
+        esac
+    done
 }
 
 # Function to check for root privileges
