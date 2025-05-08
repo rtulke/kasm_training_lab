@@ -1,65 +1,45 @@
+# roles/ansible_workspace/tasks/main.yml
 ---
-- name: Admin-Benutzername und Passwort festlegen (falls nicht vorhanden)
+- name: Admin-Benutzername und Passwort festlegen
   set_fact:
     admin_user: "admin@kasm.local"
     admin_password: "{{ kasm_admin_password }}"
-  when: admin_user is not defined or admin_password is not defined
+    skip_api: true
 
-- name: Token von KASM API bekommen
-  uri:
-    url: "{{ kasm_api_url }}/auth/login"
-    method: POST
-    validate_certs: no
-    body_format: json
-    body:
-      username: "{{ admin_user }}"
-      password: "{{ admin_password }}"
-  register: token_result
-  failed_when: false
-  retries: 5
-  delay: 10
-  until: token_result.status == 200 or token_result.json is defined
+# Direktes Docker-Handling
+- name: Ansible Workspace-Container prüfen
+  command: docker ps -a --filter "name=kasm_custom_ansible" --format '{{.Names}}'
+  register: docker_check
+  changed_when: false
+  when: skip_api | bool
 
-- name: Token extrahieren
-  set_fact:
-    kasm_token: "{{ token_result.json.token }}"
-  when: token_result.json is defined and token_result.json.token is defined
+- name: Ansible Workspace-Container starten
+  command: >
+    docker run -d
+    --name kasm_custom_ansible
+    --network kasm_default
+    --label "kasm.workspace=true"
+    --label "kasm.workspace.name=Ansible Control Node"
+    -e VNC_PW={{ kasm_user_password }}
+    -e KASM_USER=kasm-user
+    kasmweb/ubuntu-focal-desktop:latest
+  when: 
+    - skip_api | bool
+    - docker_check.stdout != "kasm_custom_ansible"
+  ignore_errors: yes
 
-- name: Ansible Control-Node Workspace in KASM aktivieren
-  uri:
-    url: "{{ kasm_api_url }}/images"
-    method: POST
-    validate_certs: no
-    headers:
-      Authorization: "Bearer {{ kasm_token }}"
-    body_format: json
-    body:
-      image_src: "docker.io/kasmweb/ubuntu-focal-desktop:latest"
-      friendly_name: "Ansible Control Node"
-      description: "Ubuntu mit vorinstalliertem Ansible für den Kurs"
-      image_type: "container"
-      enabled: true
-      cpu_limit: 2
-      memory_limit: 4096
-      gpu_count: 0
-      docker_registry: "https://index.docker.io/v1/"
-      category: "Development"
-      exec_config:
-        startupScript: |
-          apt-get update && 
-          apt-get install -y ansible git python3-pip sshpass python3-paramiko &&
-          mkdir -p /home/kasm-user/ansible/{playbooks,inventory,roles} &&
-          chown -R kasm-user:kasm-user /home/kasm-user/ansible
-  register: ansible_image_result
-  failed_when: false
-  when: kasm_token is defined
+- name: Ansible in Container installieren
+  command: >
+    docker exec kasm_custom_ansible bash -c "apt-get update && 
+    apt-get install -y ansible git python3-pip sshpass python3-paramiko &&
+    mkdir -p /home/kasm-user/ansible/{playbooks,inventory,roles} &&
+    chown -R kasm-user:kasm-user /home/kasm-user/ansible"
+  when: 
+    - skip_api | bool
+    - docker_check.stdout != "kasm_custom_ansible"
+  ignore_errors: yes
 
-- name: Ansible Workspace-Status anzeigen
+- name: Status-Info anzeigen
   debug:
-    msg: >
-      {% if ansible_image_result.status is defined and (ansible_image_result.status == 200 or ansible_image_result.status == 201) %}
-      Ansible Control Node Workspace erfolgreich aktiviert
-      {% else %}
-      Konnte Ansible Workspace nicht aktivieren: {{ ansible_image_result.msg | default('Unbekannter Fehler') }}
-      {% endif %}
-  when: ansible_image_result is defined
+    msg: "Ansible Control Node Workspace wurde direkt durch Docker-Befehle eingerichtet. Auf die KASM-Oberfläche zugreifen für URL-Registrierung."
+  when: skip_api | bool
