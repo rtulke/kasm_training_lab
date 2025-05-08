@@ -67,45 +67,6 @@ show_help() {
     echo
 }
 
-# Function to display menu and get user choice
-show_menu() {
-    local valid_choice=false
-    local choice
-    
-    # Continue until a valid choice is made
-    while [ "$valid_choice" = false ]; do
-        echo -e "Please select an option:"
-        echo
-        echo -e "  ${YELLOW}1)${NC} Download KASM Training Lab Repository from GitHub"
-        echo -e "  ${YELLOW}2)${NC} Install KASM Training Lab (Full Installation)"
-        echo -e "  ${YELLOW}3)${NC} Display Help"
-        echo -e "  ${YELLOW}4)${NC} Cancel"
-        echo
-        echo -n "Your choice [1-4]: "
-        read -r choice
-        
-        case "$choice" in
-            1)
-                valid_choice=true
-                return 1 ;;  # Download only
-            2)
-                valid_choice=true
-                return 2 ;;  # Full install
-            3)
-                # Show help and continue showing menu
-                show_help
-                echo  # Add newline for better readability
-                ;;
-            4)
-                echo -e "\nInstallation ${RED}cancelled${NC}."
-                exit 0 ;;
-            *)
-                echo -e "\n${RED}Invalid selection${NC}. Please choose 1-4.\n"
-                ;;
-        esac
-    done
-}
-
 # Function to check for root privileges
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -233,75 +194,111 @@ run_ansible_playbook() {
     echo -e "${GREEN}✓${NC} Ansible playbook executed successfully"
 }
 
-# Function to process command line arguments
-process_args() {
-    case "$1" in
-        --download-only)
-            log_message "Download-only mode selected"
-            check_root
-            clone_repository
-            echo -e "\n${GREEN}Download completed.${NC} Repository is located at $REPO_DIR\n"
-            exit 0
-            ;;
-        --full-install)
-            log_message "Full installation mode selected"
-            ACTION=2  # Full install
-            ;;
-        --help)
-            show_help
-            exit 0
-            ;;
-        *)
-            # No valid arguments provided, show welcome and menu
-            show_welcome
-            show_menu
-            ACTION=$?
-            ;;
-    esac
+# Function to execute download-only mode
+do_download_only() {
+    log_message "Starting download-only process"
+    check_root
+    clone_repository
+    echo -e "\n${GREEN}Download completed.${NC} Repository is located at $REPO_DIR\n"
+}
+
+# Function to execute full installation mode
+do_full_install() {
+    log_message "Starting installation script"
+    check_root
+    create_sources_list
+    install_packages
+    
+    # Display versions
+    echo -e "\n${BLUE}Installed versions:${NC}"
+    tree --version
+    ansible --version | head -n 1
+    
+    # Clone repository and run Ansible playbook
+    clone_repository
+    run_ansible_playbook
+    
+    log_message "Installation and configuration complete"
+    echo -e "\n${GREEN}Installation and configuration completed.${NC}"
+    echo -e "\nThe KASM Training Lab is now ready to use!"
+    echo -e "Access via: ${YELLOW}https://$(hostname -I | awk '{print $1}'):8443${NC}"
+    echo -e "${BLUE}============================================${NC}"
+}
+
+# Interactive menu function
+interactive_menu() {
+    show_welcome
+    
+    while true; do
+        echo -e "Please select an option:"
+        echo
+        echo -e "  ${YELLOW}1)${NC} Download KASM Training Lab Repository from GitHub"
+        echo -e "  ${YELLOW}2)${NC} Install KASM Training Lab (Full Installation)"
+        echo -e "  ${YELLOW}3)${NC} Display Help"
+        echo -e "  ${YELLOW}4)${NC} Cancel"
+        echo
+        echo -n "Your choice [1-4]: "
+        read choice
+        
+        case "$choice" in
+            1)
+                do_download_only
+                exit 0
+                ;;
+            2)
+                do_full_install
+                exit 0
+                ;;
+            3)
+                clear
+                show_help
+                echo -e "\nPress Enter to return to the menu..."
+                read
+                clear
+                # Show welcome screen again for consistency
+                show_welcome
+                ;;
+            4)
+                echo -e "\nInstallation ${RED}cancelled${NC}."
+                exit 0
+                ;;
+            *)
+                echo -e "\n${RED}Invalid selection${NC}. Please choose 1-4."
+                echo -e "Press Enter to continue..."
+                read
+                clear
+                show_welcome
+                ;;
+        esac
+    done
 }
 
 # Main function
 main() {
     # Process command line arguments if provided
     if [ $# -gt 0 ]; then
-        process_args "$1"
+        case "$1" in
+            --download-only)
+                log_message "Download-only mode selected via command line"
+                do_download_only
+                ;;
+            --full-install)
+                log_message "Full installation mode selected via command line"
+                do_full_install
+                ;;
+            --help)
+                show_help
+                ;;
+            *)
+                echo -e "${RED}Invalid option:${NC} $1"
+                show_help
+                exit 1
+                ;;
+        esac
     else
         # No args provided, show interactive menu
-        show_welcome
-        show_menu
-        ACTION=$?
+        interactive_menu
     fi
-    
-    # Perform actions based on user choice or command line args
-    case $ACTION in
-        1)  # Download only
-            log_message "Starting download-only process"
-            check_root
-            clone_repository
-            echo -e "\n${GREEN}Download completed.${NC} Repository is located at $REPO_DIR\n"
-            ;;
-        2)  # Full install
-            log_message "Starting installation script"
-            check_root
-            create_sources_list
-            install_packages
-            
-            # Display versions
-            echo -e "\n${BLUE}Installed versions:${NC}"
-            tree --version
-            ansible --version | head -n 1
-            
-            # Clone repository and run Ansible playbook
-            clone_repository
-            run_ansible_playbook
-            
-            log_message "Installation and configuration complete"
-            echo -e "\n${GREEN}Installation and configuration completed.${NC}"
-            echo -e "\nThe KASM Training Lab is now ready to use!"
-            echo -e "Access via: ${YELLOW}https://$(hostname -I | awk '{print $1}'):8443${NC}"
-            echo -e "${BLUE}============================================${NC}"
-            ;;
-    esac
 }
 
 # Execute script with all provided arguments
