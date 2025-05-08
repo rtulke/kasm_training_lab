@@ -1,5 +1,5 @@
 ---
-- name: Admin-Benutzername und Passwort festlegen
+- name: Admin-Benutzername und Passwort verwenden
   set_fact:
     admin_user: "admin@kasm.local"
     admin_password: "{{ kasm_admin_password }}"
@@ -14,44 +14,57 @@
   set_fact:
     kasm_network: "{{ kasm_networks.stdout | default('bridge') }}"
 
+- name: Ausgabe des verwendeten Netzwerks
+  debug:
+    msg: "Verwende Docker-Netzwerk: {{ kasm_network }}"
+
 - name: GitLab Workspace-Container prüfen
   shell: docker ps -a --filter "name=kasm_custom_gitlab" -q
   register: docker_check
   changed_when: false
 
-- name: Verfügbare KASM-Images auflisten
-  shell: docker images | grep kasmweb
-  register: kasm_images
-  changed_when: false
-
-- name: KASM-Images anzeigen
-  debug:
-    var: kasm_images.stdout_lines
-
-# Verwende ein vorhandenes Image für GitLab oder ein ähnliches
 - name: GitLab Workspace-Container starten
   shell: >
     docker run -d
     --name kasm_custom_gitlab
     --network {{ kasm_network }}
     --label "kasm.workspace=true"
-    --label "kasm.workspace.name=GitLab"
+    --label "kasm.workspace.name=GitLab Workspace"
     -e VNC_PW={{ kasm_user_password }}
     -e KASM_USER=kasm-user
-    kasmweb/ubuntu-jammy-desktop:latest
-  when: 
-    - docker_check.stdout == ""
+    kasmweb/terminal:1.17.0
+  when: docker_check.stdout == ""
   ignore_errors: yes
   register: gitlab_container_result
 
+- name: GitLab-Container-Status anzeigen
+  debug:
+    var: gitlab_container_result
+    verbosity: 1
+
 - name: GitLab-Tools in Container installieren
   shell: >
-    docker exec kasm_custom_gitlab bash -c "apt-get update &&
-    apt-get install -y git curl ca-certificates gnupg &&
-    curl -fsSL https://gitlab.com/gitlab-org/gitlab-ee/raw/master/scripts/gitlab-install.sh | bash"
-  when: gitlab_container_result is not failed and gitlab_container_result.changed
+    docker exec kasm_custom_gitlab bash -c "
+    apt-get update &&
+    apt-get install -y git curl ca-certificates gnupg wget &&
+    echo 'Installation von GitLab-Basis-Tools abgeschlossen' &&
+    mkdir -p /home/kasm-user/gitlab &&
+    chown -R kasm-user:kasm-user /home/kasm-user/gitlab"
+  when: gitlab_container_result is not failed and gitlab_container_result.rc is defined and gitlab_container_result.rc == 0
   ignore_errors: yes
+  register: gitlab_tools_result
+
+- name: GitLab-Installation-Status anzeigen
+  debug:
+    var: gitlab_tools_result
+    verbosity: 1
 
 - name: Status-Info anzeigen
   debug:
-    msg: "GitLab Workspace wurde als Ubuntu-Container mit GitLab-Tools eingerichtet."
+    msg: >
+      {% if gitlab_container_result is not failed and gitlab_container_result.rc is defined and gitlab_container_result.rc == 0 %}
+      GitLab Workspace wurde erfolgreich eingerichtet und ist bereit.
+      {% else %}
+      GitLab Workspace-Einrichtung mit direkten Docker-Befehlen konnte nicht abgeschlossen werden.
+      Bitte prüfen Sie die Docker-Logs und versuchen Sie es manuell.
+      {% endif %}
