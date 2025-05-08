@@ -44,7 +44,7 @@
 
 - name: GitLab-Tools in Container installieren
   shell: >
-    docker exec kasm_custom_gitlab bash -c "
+    docker exec -u root kasm_custom_gitlab bash -c "
     apt-get update &&
     apt-get install -y git curl ca-certificates gnupg wget &&
     echo 'Installation von GitLab-Basis-Tools abgeschlossen' &&
